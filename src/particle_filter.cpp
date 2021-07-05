@@ -45,12 +45,12 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     particle.theta = theta;
     particle.weight = 1.0;
    
-	// assign randon gaussian noise
+    // assign randon gaussian noise
     particle.x += init_x(gen); 
     particle.y += init_y(gen);
     particle.theta += init_theta(gen);
  
-	// push the particles and weights to the vector
+    // push the particles and weights to the vector
     particles.push_back(particle);
     weights.push_back(particle.weight);
   }
@@ -89,43 +89,119 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
       particles[i].theta += yaw_rate * delta_t;
     }
     
-	// update with some random gaussian noise
+    // update with some random gaussian noise
     particles[i].x += norm_x(gen);
     particles[i].y += norm_y(gen);
     particles[i].theta += norm_theta(gen);
   }
 }
 
+// ============================================================================
+// Map landmark positions
+// ============================================================================
 void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted, 
                                      vector<LandmarkObs>& observations) {
-  /**
-   * TODO: Find the predicted measurement that is closest to each 
-   *   observed measurement and assign the observed measurement to this 
-   *   particular landmark.
-   * NOTE: this method will NOT be called by the grading code. But you will 
-   *   probably find it useful to implement this method and use it as a helper 
-   *   during the updateWeights phase.
-   */
-
+  // loop over all observations
+  for (unsigned int i = 0; i< observations.size(); i++){
+    
+    // init distance to maximum possible
+    double minDistance = std::numeric_limits<double>::max();
+    int index_map = -1;
+    
+    // loop over all predictions
+    for (unsigned int j=0; j<predicted.size(); j++){
+      
+      // calculate the distance between each observation and prediction
+      double x_distance = observations[i].x - predicted[j].x;
+      double y_distance = observations[i].y - predicted[j].y;
+      double distance = x_distance * x_distance + y_distance * y_distance;
+      
+      // find the nearest neighbour
+      if (distance < minDistance){
+        minDistance = distance;
+        index_map =  predicted[j].id;
+      }
+    }
+    
+    // add the nearest prediction index
+    observations[i].id = index_map;
+  }
 }
 
+// ============================================================================
+// helper: calculate the multi-variate Gaussian distribution
+// ============================================================================
+double multiv_prob_gaussian(double sig_x, double sig_y, double x_obs, double y_obs,
+                   double mu_x, double mu_y) {
+  
+  double gaussian_norm;
+  double exponent;
+  double weight;
+  
+  // calculate normalization term
+  gaussian_norm = 1 / (2 * M_PI * sig_x * sig_y);
+
+  // calculate exponent
+  exponent = (pow(x_obs - mu_x, 2) / (2 * pow(sig_x, 2))) + (pow(y_obs - mu_y, 2) / (2 * pow(sig_y, 2)));
+
+  // calculate weight using normalization terms and exponent
+  weight = gaussian_norm * exp(-exponent);
+    
+  return weight;
+}
+
+// ============================================================================
+// Update weight
+// ============================================================================
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
                                    const vector<LandmarkObs> &observations, 
                                    const Map &map_landmarks) {
-  /**
-   * TODO: Update the weights of each particle using a mult-variate Gaussian 
-   *   distribution. You can read more about this distribution here: 
-   *   https://en.wikipedia.org/wiki/Multivariate_normal_distribution
-   * NOTE: The observations are given in the VEHICLE'S coordinate system. 
-   *   Your particles are located according to the MAP'S coordinate system. 
-   *   You will need to transform between the two systems. Keep in mind that
-   *   this transformation requires both rotation AND translation (but no scaling).
-   *   The following is a good resource for the theory:
-   *   https://www.willamette.edu/~gorr/classes/GeneralGraphics/Transforms/transforms2d.htm
-   *   and the following is a good resource for the actual equation to implement
-   *   (look at equation 3.33) http://planning.cs.uiuc.edu/node99.html
-   */
+  
+  // Read map data
+  std::vector<Map::single_landmark_s> landmark_list = map_landmarks.landmark_list;
+  double land_x;
+  double land_y;
+  double max_val = 2 * sensor_range;
+  
+  // loop over all particles
+  for (unsigned int i = 0; i < particles.size(); ++i) {
+     
+    // get the particle object
+    Particle particle = particles[i];
+    
+    // initialize the particle probability to 1.0
+    double prob = 1.0;
 
+    // loop over all observations
+    for (unsigned int j = 0; j < observations.size(); j++) {
+      
+      // transforms observations from vehicle's coordinate system to map's coordinate system
+      double x_map = particle.x + (cos(particle.theta) * observations[j].x) - (sin(particle.theta) * observations[j].y);
+      double y_map = particle.y + (sin(particle.theta) * observations[j].x) + (cos(particle.theta) * observations[j].y);
+
+      // loop over the landmarks
+      for (unsigned int k = 0; k < landmark_list.size(); k++) {
+                
+        // Calculate distance between particle and landmarks
+        double local_land_x = landmark_list[k].x_f;
+        double local_land_y = landmark_list[k].y_f;
+
+        // dist function
+        double distance = dist(x_map, y_map, local_land_x, local_land_y);
+                
+        if ((distance <= sensor_range) && (distance <= max_val)){ 
+          
+          // Calculate multivariate Gaussian normal distribution
+          land_x = local_land_x;
+          land_y = local_land_y;
+          max_val = distance;
+          prob = multiv_prob_gaussian(std_landmark[0], std_landmark[1], x_map, y_map, land_x, land_y);
+          particles[i].weight = prob;
+          weights[i] = prob;       
+        }     
+      }   
+    }  
+  }
 }
 
 void ParticleFilter::resample() {
