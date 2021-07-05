@@ -15,7 +15,7 @@ echo
 # read -p 'Git repository url: ' upstreamVar
 # read -p 'Git Username: ' userVar
 # read -p 'Git email: ' emailVar
-upstreamVar='https://github.com/willembressers/CarND-Kidnapped-Vehicle-Project.git'
+upstreamVar='git@github.com:willembressers/CarND-Kidnapped-Vehicle-Project.git'
 userVar='Willem Bressers'
 email='dhr.bressers@gmail.com'
 
