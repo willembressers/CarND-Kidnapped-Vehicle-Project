@@ -50,7 +50,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     particle.y += init_y(gen);
     particle.theta += init_theta(gen);
  
-    // push the particles and weights to the vector
+    // push the particles and weights to the vectors
     particles.push_back(particle);
     weights.push_back(particle.weight);
   }
@@ -196,6 +196,8 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
           land_y = local_land_y;
           max_val = distance;
           prob = multiv_prob_gaussian(std_landmark[0], std_landmark[1], x_map, y_map, land_x, land_y);
+          
+          // update the particle weights with the gaussian distribution
           particles[i].weight = prob;
           weights[i] = prob;       
         }     
@@ -204,14 +206,32 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
   }
 }
 
+// ============================================================================
+// resample
+// ============================================================================
 void ParticleFilter::resample() {
-  /**
-   * TODO: Resample particles with replacement with probability proportional 
-   *   to their weight. 
-   * NOTE: You may find std::discrete_distribution helpful here.
-   *   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
-   */
 
+  // Gaussian random noise generator
+  std::default_random_engine gen;
+
+  // Generate discrete distribution based on the weights
+  std::discrete_distribution<> d(weights.begin(), weights.end());
+  
+  // collect the resamples particles here
+  std::vector<Particle> resampled_particles;
+
+  // loop over all particles
+  for (int n = 0; n < num_particles; ++n) {
+
+    // generate new particles based on the discrete weights
+    Particle particle = particles[d(gen)];
+    
+    // collect the new particles in the dedicated vector
+    resampled_particles.push_back(particle);
+  }
+  
+  // overwrite the old vector with the new one
+  particles = resampled_particles;
 }
 
 void ParticleFilter::SetAssociations(Particle& particle, 
