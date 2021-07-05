@@ -20,18 +20,44 @@
 
 using std::string;
 using std::vector;
+using std::normal_distribution;
 
+// ============================================================================
+// initialization
+// ============================================================================
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
-  /**
-   * TODO: Set the number of particles. Initialize all particles to 
-   *   first position (based on estimates of x, y, theta and their uncertainties
-   *   from GPS) and all weights to 1. 
-   * TODO: Add random Gaussian noise to each particle.
-   * NOTE: Consult particle_filter.h for more information about this method 
-   *   (and others in this file).
-   */
-  num_particles = 0;  // TODO: Set the number of particles
-
+  // Set the number of particles
+  num_particles = 100;
+  
+  // Add random noise
+  std::default_random_engine gen;
+  
+  // initialize the standard distribution and theta
+  normal_distribution<double> init_x(0, std[0]);
+  normal_distribution<double> init_y(0, std[1]);
+  normal_distribution<double> init_theta(0, std[2]);
+  
+  // Generate particles
+  for (int i=0; i<num_particles; i++){
+    Particle particle;
+    particle.id = i;
+    particle.x = x; 
+    particle.y = y;
+    particle.theta = theta;
+    particle.weight = 1.0;
+   
+	// assign randon gaussian values 
+    particle.x += init_x(gen); 
+    particle.y += init_y(gen);
+    particle.theta += init_theta(gen);
+ 
+	// push the particles and weights to the vector
+    particles.push_back(particle);
+    weights.push_back(particle.weight);
+  }
+  
+  // flag that the particles are initialized
+  is_initialized = true;
 }
 
 void ParticleFilter::prediction(double delta_t, double std_pos[], 
