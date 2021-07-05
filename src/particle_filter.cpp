@@ -20,7 +20,6 @@
 
 using std::string;
 using std::vector;
-using std::normal_distribution;
 
 // ============================================================================
 // initialization
@@ -29,13 +28,13 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
   // Set the number of particles
   num_particles = 100;
   
-  // Add random noise
+  // Gaussian random noise generator
   std::default_random_engine gen;
   
   // initialize the standard distribution and theta
-  normal_distribution<double> init_x(0, std[0]);
-  normal_distribution<double> init_y(0, std[1]);
-  normal_distribution<double> init_theta(0, std[2]);
+  std::normal_distribution<double> init_x(0, std[0]);
+  std::normal_distribution<double> init_y(0, std[1]);
+  std::normal_distribution<double> init_theta(0, std[2]);
   
   // Generate particles
   for (int i=0; i<num_particles; i++){
@@ -46,7 +45,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
     particle.theta = theta;
     particle.weight = 1.0;
    
-	// assign randon gaussian values 
+	// assign randon gaussian noise
     particle.x += init_x(gen); 
     particle.y += init_y(gen);
     particle.theta += init_theta(gen);
@@ -60,16 +59,41 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
   is_initialized = true;
 }
 
+// ============================================================================
+// Prediction step
+// ============================================================================
 void ParticleFilter::prediction(double delta_t, double std_pos[], 
                                 double velocity, double yaw_rate) {
-  /**
-   * TODO: Add measurements to each particle and add random Gaussian noise.
-   * NOTE: When adding noise you may find std::normal_distribution 
-   *   and std::default_random_engine useful.
-   *  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
-   *  http://www.cplusplus.com/reference/random/default_random_engine/
-   */
+  // Gaussian random noise generator
+  std::default_random_engine gen;
 
+  // define normal distributions
+  std::normal_distribution<double> norm_x(0, std_pos[0]);
+  std::normal_distribution<double> norm_y(0, std_pos[1]);
+  std::normal_distribution<double> norm_theta(0, std_pos[2]);
+  
+  // loop over the particles
+  for (int i = 0; i < num_particles; i++) {
+
+    if (fabs(yaw_rate) < 0.00001) {
+      
+      // driving straight
+      particles[i].x += velocity * delta_t * cos(particles[i].theta);
+      particles[i].y += velocity * delta_t * sin(particles[i].theta);
+      
+    } else {
+      
+      // vehicle is turning
+      particles[i].x += velocity / yaw_rate * (sin(particles[i].theta + yaw_rate * delta_t) - sin(particles[i].theta));
+      particles[i].y += velocity / yaw_rate * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate * delta_t));
+      particles[i].theta += yaw_rate * delta_t;
+    }
+    
+	// update with some random gaussian noise
+    particles[i].x += norm_x(gen);
+    particles[i].y += norm_y(gen);
+    particles[i].theta += norm_theta(gen);
+  }
 }
 
 void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted, 
