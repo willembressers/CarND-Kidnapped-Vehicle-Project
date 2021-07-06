@@ -32,23 +32,20 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
   std::default_random_engine gen;
   
   // initialize the standard distribution and theta
-  std::normal_distribution<double> init_x(0, std[0]);
-  std::normal_distribution<double> init_y(0, std[1]);
-  std::normal_distribution<double> init_theta(0, std[2]);
+  std::normal_distribution<double> norm_x(x, std[0]);
+  std::normal_distribution<double> norm_y(y, std[1]);
+  std::normal_distribution<double> norm_theta(theta, std[2]);
   
   // Generate particles
-  for (int i=0; i<num_particles; i++){
+  for (int i=0; i < num_particles; i++) {
+
+    // create the particle
     Particle particle;
     particle.id = i;
-    particle.x = x; 
-    particle.y = y;
-    particle.theta = theta;
+    particle.x = norm_x(gen); 
+    particle.y = norm_y(gen);
+    particle.theta = norm_theta(gen);
     particle.weight = 1.0;
-   
-    // assign randon gaussian noise
-    particle.x += init_x(gen); 
-    particle.y += init_y(gen);
-    particle.theta += init_theta(gen);
  
     // push the particles and weights to the vectors
     particles.push_back(particle);
@@ -68,9 +65,9 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
   std::default_random_engine gen;
 
   // define normal distributions
-  std::normal_distribution<double> norm_x(0, std_pos[0]);
-  std::normal_distribution<double> norm_y(0, std_pos[1]);
-  std::normal_distribution<double> norm_theta(0, std_pos[2]);
+  std::normal_distribution<double> norm_x(0.0, std_pos[0]);
+  std::normal_distribution<double> norm_y(0.0, std_pos[1]);
+  std::normal_distribution<double> norm_theta(0.0, std_pos[2]);
   
   // loop over the particles
   for (int i = 0; i < num_particles; i++) {
@@ -102,50 +99,39 @@ void ParticleFilter::prediction(double delta_t, double std_pos[],
 void ParticleFilter::dataAssociation(vector<LandmarkObs> predicted, 
                                      vector<LandmarkObs>& observations) {
   // loop over all observations
-  for (unsigned int i = 0; i< observations.size(); i++){
+  for (unsigned int i = 0; i < observations.size(); i++) {
     
     // init distance to maximum possible
     double minDistance = std::numeric_limits<double>::max();
-    int index_map = -1;
     
     // loop over all predictions
-    for (unsigned int j=0; j<predicted.size(); j++){
+    for (unsigned int j=0; j < predicted.size(); j++){
       
       // calculate the distance between each observation and prediction
-      double x_distance = observations[i].x - predicted[j].x;
-      double y_distance = observations[i].y - predicted[j].y;
-      double distance = x_distance * x_distance + y_distance * y_distance;
+      double distance = dist(observations[i].x, observations[i].y, predicted[j].x, predicted[j].y);
       
       // find the nearest neighbour
       if (distance < minDistance){
         minDistance = distance;
-        index_map =  predicted[j].id;
+        observations[i].id = predicted[j].id;
       }
     }
-    
-    // add the nearest prediction index
-    observations[i].id = index_map;
   }
 }
 
 // ============================================================================
 // helper: calculate the multi-variate Gaussian distribution
 // ============================================================================
-double multiv_prob_gaussian(double sig_x, double sig_y, double x_obs, double y_obs,
-                   double mu_x, double mu_y) {
-  
-  double gaussian_norm;
-  double exponent;
-  double weight;
+double multiv_prob_gaussian(double sig_x, double sig_y, double x_obs, double y_obs, double mu_x, double mu_y) {
   
   // calculate normalization term
-  gaussian_norm = 1 / (2 * M_PI * sig_x * sig_y);
+  double gaussian_norm = 1 / (2 * M_PI * sig_x * sig_y);
 
   // calculate exponent
-  exponent = (pow(x_obs - mu_x, 2) / (2 * pow(sig_x, 2))) + (pow(y_obs - mu_y, 2) / (2 * pow(sig_y, 2)));
+  double exponent = (pow(x_obs - mu_x, 2) / (2 * pow(sig_x, 2))) + (pow(y_obs - mu_y, 2) / (2 * pow(sig_y, 2)));
 
   // calculate weight using normalization terms and exponent
-  weight = gaussian_norm * exp(-exponent);
+  double weight = gaussian_norm * exp(-exponent);
     
   return weight;
 }
@@ -157,52 +143,52 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
                                    const vector<LandmarkObs> &observations, 
                                    const Map &map_landmarks) {
   
-  // Read map data
-  std::vector<Map::single_landmark_s> landmark_list = map_landmarks.landmark_list;
-  double land_x;
-  double land_y;
-  double max_val = 2 * sensor_range;
-  
-  // loop over all particles
+  // Loop over all particles
   for (unsigned int i = 0; i < particles.size(); ++i) {
-     
-    // get the particle object
-    Particle particle = particles[i];
     
-    // initialize the particle probability to 1.0
-    double prob = 1.0;
+    // Loop over all observations and transform it's perspective
+    std::vector<LandmarkObs> observations_transformed;
+    for (unsigned int j = 0; j< observations.size(); j++) {
+      LandmarkObs temp;
+      temp.x = particles[i].x + cos(particles[i].theta) * observations[j].x - sin(particles[i].theta) * observations[j].y;
+      temp.y = particles[i].y + sin(particles[i].theta) * observations[j].x + cos(particles[i].theta) * observations[j].y;
+      observations_transformed.push_back(temp);
+    }
 
-    // loop over all observations
-    for (unsigned int j = 0; j < observations.size(); j++) {
-      
-      // transforms observations from vehicle's coordinate system to map's coordinate system
-      double x_map = particle.x + (cos(particle.theta) * observations[j].x) - (sin(particle.theta) * observations[j].y);
-      double y_map = particle.y + (sin(particle.theta) * observations[j].x) + (cos(particle.theta) * observations[j].y);
+    // Loop over the landmarks and find within the sensor range only
+    std::vector<LandmarkObs> predicted;
+    std::vector<Map::single_landmark_s> landmarks = map_landmarks.landmark_list;
+    for (unsigned int j = 0; j < landmarks.size(); j++) {
+      double distance = dist(landmarks[j].x_f, landmarks[j].y_f, particles[i].x, particles[i].y);
+      if(distance <= sensor_range){
+        LandmarkObs pred;
+        pred.id = landmarks[j].id_i;
+        pred.x = landmarks[j].x_f;
+        pred.y = landmarks[j].y_f;
+        predicted.push_back(pred);
+      }
+    }
 
-      // loop over the landmarks
-      for (unsigned int k = 0; k < landmark_list.size(); k++) {
-                
-        // Calculate distance between particle and landmarks
-        double local_land_x = landmark_list[k].x_f;
-        double local_land_y = landmark_list[k].y_f;
+    // Assosiate data
+    dataAssociation(predicted, observations_transformed);
 
-        // dist function
-        double distance = dist(x_map, y_map, local_land_x, local_land_y);
-                
-        if ((distance <= sensor_range) && (distance <= max_val)){ 
-          
-          // Calculate multivariate Gaussian normal distribution
-          land_x = local_land_x;
-          land_y = local_land_y;
-          max_val = distance;
-          prob = multiv_prob_gaussian(std_landmark[0], std_landmark[1], x_map, y_map, land_x, land_y);
-          
-          // update the particle weights with the gaussian distribution
-          particles[i].weight = prob;
-          weights[i] = prob;       
-        }     
-      }   
-    }  
+    // Calculate the weight
+    double weight = 1.0;
+    for (unsigned int j = 0; j< observations_transformed.size(); j++) {
+      double mu_x = 0;
+      double mu_y = 0;
+      for (unsigned int k=0; k < predicted.size(); k++){
+        if(predicted[k].id == observations_transformed[j].id){
+          mu_x = predicted[k].x;
+          mu_y = predicted[k].y;
+        }
+      }
+      weight *= multiv_prob_gaussian(std_landmark[0], std_landmark[1], observations_transformed[j].x, observations_transformed[j].y, mu_x, mu_y);
+    }
+
+    // update the particle + weights, weight
+    particles[i].weight = weight;
+    weights[i] = weight;
   }
 }
 
